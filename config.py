@@ -17,6 +17,7 @@ _profile = importlib.import_module(f"profiles.{_profile_name}")
 
 TARGETS = _profile.TARGETS
 WATCHED_PORTS = _profile.WATCHED_PORTS
+KNOWN_DEVICE_MACS = {mac.lower() for mac in getattr(_profile, "KNOWN_DEVICE_MACS", set())}
 LAN_SUBNET = _profile.LAN_SUBNET
 ACTIVE_PROFILE = _profile_name
 
@@ -29,7 +30,10 @@ LOSS_THRESHOLD_PCT = 20
 TELEGRAM_BOT_TOKEN = os.environ.get("NETWATCH_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("NETWATCH_CHAT_ID", "")
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "netwatch.db")
+DB_PATH = os.environ.get(
+    "NETWATCH_DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "netwatch.db"),
+)
 
 DEVICE_SCAN_INTERVAL_SEC = 120
 PORT_TIMEOUT_SEC = 2

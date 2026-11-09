@@ -57,6 +57,28 @@ nothing else changes.
 `python monitor.py --once` runs a single round of everything immediately,
 useful for testing without waiting for the loop.
 
+## Controlled simulation scenarios
+
+Run an offline scenario to exercise NetWatch's recording and alert paths without probing a real network. Simulation records are labelled in SQLite and in the dashboard; simulated alerts never send Telegram messages.
+
+```powershell
+py simulate.py NORMAL
+py simulate.py HIGH_LATENCY
+py simulate.py PACKET_LOSS
+py simulate.py HOST_DOWN
+py simulate.py UNKNOWN_DEVICE
+py simulate.py PORT_CHANGE
+```
+
+Each scenario writes to its own `netwatch_simulation_<scenario>.db` by default, separate from live `netwatch.db`. For example, view the high-latency run:
+
+```powershell
+$env:NETWATCH_DB_PATH = "$PWD/netwatch_simulation_high_latency.db"
+py app.py
+```
+
+These scenarios verify software responses; they are not real network measurements or Raspberry Pi field results. `PORT_CHANGE` seeds an open-port baseline and submits a closed state. `UNKNOWN_DEVICE` submits a synthetic MAC address. For live unknown-device alerts, add trusted MAC addresses to `KNOWN_DEVICE_MACS` in the active network profile. Until that list is populated, every discovered MAC is treated as unregistered.
+
 ## What to expect differently per network
 
 - **Campus wifi**: internet targets (Google DNS, Cloudflare DNS) work
@@ -82,6 +104,7 @@ useful for testing without waiting for the loop.
   checks, and alert logic
 - `app.py` + `templates/index.html` - the Flask dashboard
 - `test_scenarios.py` - scripted tests for your evaluation chapter
+- `simulate.py` - labelled, offline abnormal-condition scenarios
 
 ## Telegram setup (10 minutes)
 
@@ -109,8 +132,8 @@ traffic fills the ARP cache within a minute or two) and rescan.
 ## Port checks
 
 A plain TCP connect to each `(address, port)` pair in `WATCHED_PORTS`,
-2-second timeout. True/false open, logged every round, alerts if a port
-that should be open isn't.
+2-second timeout. Open/closed states are stored; changes are alerted after an
+initial baseline exists. Configure only services on networks you administer.
 
 ## Tailscale (remote access without port forwarding)
 
@@ -124,19 +147,17 @@ that should be open isn't.
 
 ## Evaluation scenarios
 
-`python test_scenarios.py` runs Scenario A (normal conditions, checks every
-target reads up with acceptable loss) and Scenario C (device discovery).
-Scenario B (induced fault) is interactive - it waits for you to break a
-host's connectivity, then times how long NetWatch takes to detect it. Run it
-with:
+`python test_scenarios.py` records Scenario A (baseline checks) and Scenario C
+(cached-neighbor discovery). Scenario B is an interactive controlled loss and
+recovery test. Choose a reachable test device you administer; do not disrupt a
+gateway, public host, or another user's device. Run it with a configured local
+target name:
 ```
-python -c "import test_scenarios as t; t.scenario_b_induced_fault()"
+python -c "import test_scenarios as t; t.scenario_b_induced_fault('YOUR_TEST_HOST')"
 ```
-Ways to induce a fault: unplug a device, block it with
-`sudo iptables -A OUTPUT -d <ip> -j DROP` (undo with `-D` instead of `-A`),
-or add traffic shaping for packet loss:
-`sudo tc qdisc add dev eth0 root netem loss 30%` (undo:
-`sudo tc qdisc del dev eth0 root`).
+Temporarily disconnect the authorized test device or stop its network
+connection, then restore it when prompted. The script persists readings and
+alerts. Measure detection and recovery separately from Telegram delivery.
 
 Report two numbers separately:
 - **Detection time**: what the script measures (time from fault to NetWatch

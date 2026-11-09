@@ -2,6 +2,18 @@
 
 Updated: 10 November 2026
 
+## Offline regression run — 10 November 2026
+
+Command: `py -m unittest discover -s tests -v`
+
+Result: **11 tests passed.** Checks cover SQLite history, device/port snapshots, legacy database migration, host and port alert edges, port transitions, unregistered device detection, all six simulation modes, simulation origin and Telegram suppression, `/api/status` output, and the controlled-fault script's persistence/recovery path with mocked inputs.
+
+Command: `py -m compileall -q .`
+
+Result: completed with no syntax errors.
+
+These are offline Windows development-host checks. They do not establish Raspberry Pi compatibility, field detection accuracy, network access, Telegram delivery, or user usability.
+
 ## Preliminary development-host run
 
 Existing `test_scenarios.py` was run from an isolated copy of the source on the Windows development host using the `campus` profile.

@@ -20,18 +20,29 @@ Updated: 10 November 2026
 
 - Runtime on Raspberry Pi 3 Model B+.
 - End-to-end monitoring on the intended small LAN.
-- Unknown-device detection and port-change detection.
+- Pi validation of the new unknown-device and port-change features.
 - Telegram notification delivery.
 - Scenario B controlled abnormal condition, dashboard update timing, detection success rate, false alerts, or usability.
 - Current official report format.
 
 See `TEST_RESULTS.md`, `TEST_PLAN.md`, and `KNOWN_LIMITATIONS.md` for details. The consolidated initial audit is in the task outputs folder.
 
+## Development update: controlled scenarios
+
+- Added profile-specific trusted MAC lists and registration status in device snapshots; newly observed unregistered devices generate an alert.
+- Added edge detection for changes to a monitored TCP port.
+- Added offline `NORMAL`, `HIGH_LATENCY`, `PACKET_LOSS`, `HOST_DOWN`, `UNKNOWN_DEVICE`, and `PORT_CHANGE` scenarios. They use the application's recording/alert pathways, save to separate per-scenario databases by default, display a SIMULATED label, and suppress Telegram sends.
+- Added an additive SQLite migration for a `source` column so pre-existing databases remain readable and records identify live or simulated origin.
+- Added an offline test suite. Eleven checks passed, including migration, alert transitions, all six scenarios, simulation labeling, and `/api/status`.
+
+These changes have not been deployed to the Raspberry Pi. Genuine Scenario A/B results, Telegram delivery, network-specific trusted MAC baselines, and usability evaluation remain outstanding.
+
 ## Priority next steps
 
-1. Confirm final report template and scenario definitions with the current UiTM/supervisor requirements.
-2. Implement or narrow the proposal requirements for device baseline/unknown-device and port-status change detection.
-3. Add repeatable automated tests for monitoring decisions, API output, and database behavior.
-4. Run the system on the Pi in a controlled LAN and collect genuine evidence.
+1. Deploy this version to the approved Pi 3 Model B+ and verify dashboard access from the laptop.
+2. Set trusted MAC addresses and watched ports for an authorized local network.
+3. Execute and record Scenario A and Scenario B real-world runs, clearly separating simulation results.
+4. Test Telegram delivery and collect usability feedback if required by the confirmed supervisor methodology.
+5. Update Chapters 3–5 using actual test evidence and the current official template.
 
 Additional audit check: a one-shot monitor cycle ran successfully on the Windows development host and persisted measurements plus a host-down alert. Raspberry Pi deployment and Telegram delivery remain unverified.

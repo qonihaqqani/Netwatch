@@ -28,7 +28,8 @@ def init_db():
                 address TEXT NOT NULL,
                 latency_ms REAL,
                 loss_pct REAL NOT NULL,
-                is_up INTEGER NOT NULL
+                is_up INTEGER NOT NULL,
+                source TEXT NOT NULL DEFAULT 'live'
             );
             CREATE INDEX IF NOT EXISTS idx_readings_target ON readings(target, id);
 
@@ -39,14 +40,16 @@ def init_db():
                 kind TEXT NOT NULL,
                 message TEXT NOT NULL,
                 telegram_sent INTEGER NOT NULL DEFAULT 0,
-                telegram_delay_ms INTEGER
+                telegram_delay_ms INTEGER,
+                source TEXT NOT NULL DEFAULT 'live'
             );
 
             CREATE TABLE IF NOT EXISTS device_scans (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts TEXT NOT NULL,
                 device_count INTEGER NOT NULL,
-                devices_json TEXT NOT NULL
+                devices_json TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'live'
             );
 
             CREATE TABLE IF NOT EXISTS port_checks (
@@ -54,46 +57,52 @@ def init_db():
                 ts TEXT NOT NULL,
                 address TEXT NOT NULL,
                 port INTEGER NOT NULL,
-                is_open INTEGER NOT NULL
+                is_open INTEGER NOT NULL,
+                source TEXT NOT NULL DEFAULT 'live'
             );
             """
         )
+        # Additive migrations keep existing project databases usable.
+        for table in ("readings", "alerts", "device_scans", "port_checks"):
+            columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "source" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN source TEXT NOT NULL DEFAULT 'live'")
         conn.commit()
 
 
-def save_reading(target, address, latency_ms, loss_pct, is_up):
+def save_reading(target, address, latency_ms, loss_pct, is_up, source="live"):
     with closing(connect()) as conn:
         conn.execute(
-            "INSERT INTO readings (ts, target, address, latency_ms, loss_pct, is_up) VALUES (?,?,?,?,?,?)",
-            (now(), target, address, latency_ms, loss_pct, int(is_up)),
+            "INSERT INTO readings (ts, target, address, latency_ms, loss_pct, is_up, source) VALUES (?,?,?,?,?,?,?)",
+            (now(), target, address, latency_ms, loss_pct, int(is_up), source),
         )
         conn.commit()
 
 
-def save_alert(target, kind, message, telegram_sent, telegram_delay_ms):
+def save_alert(target, kind, message, telegram_sent, telegram_delay_ms, source="live"):
     with closing(connect()) as conn:
         conn.execute(
-            "INSERT INTO alerts (ts, target, kind, message, telegram_sent, telegram_delay_ms) VALUES (?,?,?,?,?,?)",
-            (now(), target, kind, message, int(telegram_sent), telegram_delay_ms),
+            "INSERT INTO alerts (ts, target, kind, message, telegram_sent, telegram_delay_ms, source) VALUES (?,?,?,?,?,?,?)",
+            (now(), target, kind, message, int(telegram_sent), telegram_delay_ms, source),
         )
         conn.commit()
 
 
-def save_device_scan(devices):
+def save_device_scan(devices, source="live"):
     import json
     with closing(connect()) as conn:
         conn.execute(
-            "INSERT INTO device_scans (ts, device_count, devices_json) VALUES (?,?,?)",
-            (now(), len(devices), json.dumps(devices)),
+            "INSERT INTO device_scans (ts, device_count, devices_json, source) VALUES (?,?,?,?)",
+            (now(), len(devices), json.dumps(devices), source),
         )
         conn.commit()
 
 
-def save_port_check(address, port, is_open):
+def save_port_check(address, port, is_open, source="live"):
     with closing(connect()) as conn:
         conn.execute(
-            "INSERT INTO port_checks (ts, address, port, is_open) VALUES (?,?,?,?)",
-            (now(), address, port, int(is_open)),
+            "INSERT INTO port_checks (ts, address, port, is_open, source) VALUES (?,?,?,?,?)",
+            (now(), address, port, int(is_open), source),
         )
         conn.commit()
 
@@ -140,6 +149,16 @@ def latest_port_checks():
             """
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def previous_port_check(address, port):
+    """Return the prior state for a monitored pair, excluding its latest row."""
+    with closing(connect()) as conn:
+        row = conn.execute(
+            "SELECT * FROM port_checks WHERE address = ? AND port = ? ORDER BY id DESC LIMIT 1",
+            (address, port),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def history(target, limit=50):

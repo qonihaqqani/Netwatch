@@ -108,3 +108,7 @@ Write access to the supplied source folder was granted for this turn. The reques
 
 The `test_scenarios.py` Scenario B was not run because it requires a manually induced real fault. Do not count it as passed.
 
+### Implementation update — 10 November 2026
+
+After this baseline audit, the project added profile-specific trusted MAC lists, unknown-device alerts, port-state transition alerts, and six labelled offline simulation modes. A `source` field distinguishes simulated records; each scenario uses a separate SQLite file by default and cannot send Telegram messages. Eleven automated offline checks now pass. The original findings above are retained as the baseline audit; the current implementation state is recorded in `PROJECT_STATUS.md`, `TEST_PLAN.md`, and `TEST_RESULTS.md`.
+

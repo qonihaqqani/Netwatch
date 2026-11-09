@@ -109,37 +109,73 @@ def send_telegram(text):
     return ok, int((time.monotonic() - start) * 1000)
 
 
-def raise_alert(target, kind, message):
+def raise_alert(target, kind, message, source="live"):
     print(f"    >> {message}")
-    sent, delay = send_telegram(f"NetWatch: {message}")
-    db.save_alert(target, kind, message, sent, delay)
+    # Simulated events must never send a real Telegram notification.
+    sent, delay = send_telegram(f"NetWatch: {message}") if source == "live" else (False, None)
+    db.save_alert(target, kind, message, sent, delay, source=source)
 
 
-def set_alert(name, kind, active, active_message, resolved_message):
+def set_alert(name, kind, active, active_message, resolved_message, source="live"):
     was_active = alert_state.get((name, kind), False)
     if active and not was_active:
-        raise_alert(name, kind, f"ALERT: {active_message}")
+        raise_alert(name, kind, f"ALERT: {active_message}", source)
     elif was_active and not active:
-        raise_alert(name, kind + "_resolved", f"RESOLVED: {resolved_message}")
+        raise_alert(name, kind + "_resolved", f"RESOLVED: {resolved_message}", source)
     alert_state[(name, kind)] = active
 
 
-def check_ping_alerts(name, latency, loss, is_up):
+def check_ping_alerts(name, latency, loss, is_up, source="live"):
     set_alert(name, "host_down", not is_up,
-              f"{name} is unreachable", f"{name} is back online")
+              f"{name} is unreachable", f"{name} is back online", source)
     set_alert(name, "high_latency", is_up and latency is not None and latency > config.LATENCY_THRESHOLD_MS,
-              f"{name} latency is {latency:.0f} ms (limit {config.LATENCY_THRESHOLD_MS} ms)" if latency else "",
-              f"{name} latency is back under {config.LATENCY_THRESHOLD_MS} ms")
+              f"{name} latency is {latency:.0f} ms (limit {config.LATENCY_THRESHOLD_MS} ms)" if latency is not None else "",
+              f"{name} latency is back under {config.LATENCY_THRESHOLD_MS} ms", source)
     set_alert(name, "packet_loss", is_up and loss > config.LOSS_THRESHOLD_PCT,
               f"{name} packet loss is {loss:.0f}% (limit {config.LOSS_THRESHOLD_PCT}%)",
-              f"{name} packet loss is back under {config.LOSS_THRESHOLD_PCT}%")
+              f"{name} packet loss is back under {config.LOSS_THRESHOLD_PCT}%", source)
 
 
-def check_port_alerts(address, port, is_open):
+def check_port_alerts(address, port, is_open, source="live"):
     label = f"{address}:{port}"
     set_alert(label, "port_closed", not is_open,
               f"port {port} on {address} is closed (expected open)",
-              f"port {port} on {address} is open again")
+              f"port {port} on {address} is open again", source)
+
+
+def record_ping_result(name, address, latency, loss, source="live"):
+    is_up = loss < 100
+    db.save_reading(name, address, latency, loss, is_up, source=source)
+    check_ping_alerts(name, latency, loss, is_up, source=source)
+    return is_up
+
+
+def record_port_result(address, port, is_open, source="live"):
+    previous = db.previous_port_check(address, port)
+    if previous and bool(previous["is_open"]) != bool(is_open):
+        old_state = "open" if previous["is_open"] else "closed"
+        new_state = "open" if is_open else "closed"
+        label = f"{address}:{port}"
+        set_alert(label, "port_change", True,
+                  f"port {port} on {address} changed from {old_state} to {new_state}",
+                  f"port {port} on {address} status is stable", source)
+    elif previous:
+        set_alert(f"{address}:{port}", "port_change", False, "", "port status is stable", source)
+    db.save_port_check(address, port, is_open, source=source)
+    check_port_alerts(address, port, is_open, source=source)
+
+
+def record_device_scan(devices, source="live"):
+    for device in devices:
+        mac = str(device.get("mac", "")).lower()
+        registered = bool(mac and mac in config.KNOWN_DEVICE_MACS)
+        device["registered"] = registered
+        if mac and not registered:
+            label = f"{device.get('ip', 'Unknown IP')} ({mac})"
+            set_alert(label, "unknown_device", True,
+                      f"unregistered device detected: {label}",
+                      "", source)
+    db.save_device_scan(devices, source=source)
 
 
 # ---------- rounds ----------
@@ -147,25 +183,22 @@ def check_port_alerts(address, port, is_open):
 def run_ping_round():
     for name, address in config.TARGETS.items():
         latency, loss = ping(address)
-        is_up = loss < 100
-        db.save_reading(name, address, latency, loss, is_up)
+        is_up = record_ping_result(name, address, latency, loss)
         lat_text = f"{latency:.1f} ms" if latency is not None else "-"
         print(f"{db.now()}  {name:<16} {address:<15} up={is_up!s:<5} latency={lat_text:<10} loss={loss:.0f}%")
-        check_ping_alerts(name, latency, loss, is_up)
 
 
 def run_port_round():
     for address, ports in config.WATCHED_PORTS.items():
         for port in ports:
             is_open = check_port(address, port)
-            db.save_port_check(address, port, is_open)
+            record_port_result(address, port, is_open)
             print(f"{db.now()}  port {address}:{port:<6} open={is_open}")
-            check_port_alerts(address, port, is_open)
 
 
 def run_device_scan():
     devices = scan_devices()
-    db.save_device_scan(devices)
+    record_device_scan(devices)
     print(f"{db.now()}  device scan: {len(devices)} device(s) on the LAN")
 
 

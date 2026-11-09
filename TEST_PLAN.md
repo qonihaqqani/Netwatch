@@ -10,14 +10,15 @@ Tests must distinguish real measurements from mocked/unit inputs. Record platfor
 | TP04 | Dashboard page and `/api/status` response | Isolated integration | Passed with temporary test database. |
 | TP05 | SQLite readings, scans, ports, alerts, and history persistence | Isolated integration | Passed with temporary test database. |
 | TP06 | Host-down alert and recovery | Mocked unit check | Passed; no network/Telegram activity. |
-| TP07 | High latency and packet-loss threshold transitions | Mocked unit check | Pending. |
-| TP08 | Unknown-device detection from a registered baseline | Functional | Not implemented. |
-| TP09 | Selected port-status change detection | Functional | Not implemented; current check only alerts for configured expected-open ports that are closed. |
+| TP07 | High latency and packet-loss threshold transitions | Automated/simulated | Passed offline through `tests/test_core.py`; field validation pending. |
+| TP08 | Unknown-device detection from a registered baseline | Automated/simulated | Detection implemented; automated check passed. Populate trusted MAC list and validate on Pi. |
+| TP09 | Selected port-status change detection | Automated/simulated | Implemented using previous saved status; automated check passed. Validate against a real authorized service. |
 | TP10 | Telegram end-to-end message receipt | Integration | Pending; no credentials configured for audit. |
 | TP11 | Scenario A on Raspberry Pi in intended LAN | Field | Pending. |
 | TP12 | Scenario B controlled fault on Raspberry Pi | Field | Pending; do not use attack traffic outside an isolated, authorized lab. |
 | TP13 | Restart persistence and recovery behavior | Integration | Database reads after close/reopen passed in temporary check; full application restart test pending. |
 | TP14 | Dashboard usability feedback | User evaluation | Pending; requires approved participants/questionnaire process. |
+| TP15 | Six controlled modes (`NORMAL`, `HIGH_LATENCY`, `PACKET_LOSS`, `HOST_DOWN`, `UNKNOWN_DEVICE`, `PORT_CHANGE`) | Offline simulation | Implemented; exercised on Windows. Results are labelled and use a separate database by default. |
 
 ## Metric definitions to finalize
 
