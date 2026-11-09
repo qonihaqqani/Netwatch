@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NetWatch</title>
+<style>
+  :root {
+    --bg: #f4f6f8; --panel: #ffffff; --ink: #1c2128; --muted: #5b6570; --line: #dce1e6;
+    --up: #17794a; --warn: #9a5b00; --down: #c0262d; --stale: #6b7480; --accent: #2b6cb0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  h1 { font-size: 1.5rem; margin: 0; }
+  h2 { font-size: 1.05rem; margin: 28px 0 8px; }
+  .updated { color: var(--muted); font-size: 0.9rem; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 560px; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 0.95rem; vertical-align: middle; }
+  th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .status { font-weight: 600; white-space: nowrap; }
+  .status::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+                    margin-right: 8px; background: currentColor; }
+  .up { color: var(--up); } .warn { color: var(--warn); } .down { color: var(--down); } .stale { color: var(--stale); }
+  .empty { padding: 18px 14px; color: var(--muted); }
+  .error { display: none; background: #fdecea; color: var(--down); border: 1px solid #f3c1bd;
+           padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; }
+  code { background: #e9edf1; padding: 1px 6px; border-radius: 4px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; }
+  .card .big { font-size: 1.8rem; font-weight: 700; }
+  .card .label { color: var(--muted); font-size: 0.85rem; }
+  .spark { display: block; }
+  .open { color: var(--up); } .closed { color: var(--down); }
+  details summary { cursor: pointer; color: var(--accent); font-size: 0.9rem; padding: 10px 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>NetWatch <span id="profile" style="font-size:0.95rem;font-weight:500;color:var(--muted)"></span></h1>
+    <span class="updated" id="updated">Loading…</span>
+  </header>
+  <div class="error" id="error">The dashboard can't reach its server. Check that <code>python app.py</code> is still running.</div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="big" id="device-count">–</div>
+      <div class="label" id="device-age">Devices on the LAN</div>
+    </div>
+  </div>
+
+  <h2>Hosts</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Host</th><th>Status</th><th>Latency</th><th>Trend</th><th>Packet loss</th><th>Last checked</th></tr></thead>
+      <tbody id="hosts"></tbody>
+    </table>
+    <div class="empty" id="hosts-empty" style="display:none">No readings yet. Start the monitor with <code>python monitor.py</code>.</div>
+  </div>
+
+  <h2>Watched ports</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Address</th><th>Port</th><th>Status</th></tr></thead>
+      <tbody id="ports"></tbody>
+    </table>
+    <div class="empty" id="ports-empty" style="display:none">No ports configured. Add entries to <code>WATCHED_PORTS</code> in config.py.</div>
+  </div>
+
+  <h2>Alert history</h2>
+  <div class="panel">
+    <table>
+      <thead><tr><th>Time</th><th>Host</th><th>Event</th><th>Telegram</th></tr></thead>
+      <tbody id="alerts"></tbody>
+    </table>
+    <div class="empty" id="alerts-empty" style="display:none">No alerts yet.</div>
+  </div>
+
+  <details id="device-list-wrap" style="margin-top:12px">
+    <summary>Show device list</summary>
+    <div class="panel" style="margin-top:8px">
+      <table>
+        <thead><tr><th>IP address</th><th>MAC address</th><th>Hostname</th></tr></thead>
+        <tbody id="device-list"></tbody>
+      </table>
+    </div>
+  </details>
+</main>
+
+<script>
+function cell(text, cls) {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (cls) td.className = cls;
+  return td;
+}
+
+function statusOf(t, th) {
+  if (t.age_sec > th.stale_after_sec) return ["No recent data", "stale"];
+  if (!t.is_up) return ["Down", "down"];
+  if ((t.latency_ms !== null && t.latency_ms > th.latency_ms) || t.loss_pct > th.loss_pct) return ["Degraded", "warn"];
+  return ["Up", "up"];
+}
+
+function ago(sec) {
+  if (sec < 60) return sec + " s ago";
+  if (sec < 3600) return Math.round(sec / 60) + " min ago";
+  return Math.round(sec / 3600) + " h ago";
+}
+
+// Draws a small latency sparkline as inline SVG. No chart library needed for ~40 points.
+function sparkline(history) {
+  const vals = history.map(h => h.latency_ms).filter(v => v !== null);
+  if (vals.length < 2) return "–";
+  const w = 120, h = 28, pad = 2;
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = (max - min) || 1;
+  const step = (w - pad * 2) / (vals.length - 1);
+  const points = vals.map((v, i) => {
+    const x = pad + i * step;
+    const y = h - pad - ((v - min) / range) * (h - pad * 2);
+    return x.toFixed(1) + "," + y.toFixed(1);
+  }).join(" ");
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+  </svg>`;
+}
+
+async function refresh() {
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+    document.getElementById("error").style.display = "none";
+
+    const hosts = document.getElementById("hosts");
+    hosts.replaceChildren();
+    data.targets.forEach(t => {
+      const [label, cls] = statusOf(t, data.thresholds);
+      const tr = document.createElement("tr");
+      const trendTd = document.createElement("td");
+      trendTd.innerHTML = sparkline(t.history || []);
+      tr.append(
+        cell(t.target),
+        cell(label, "status " + cls),
+        cell(t.latency_ms !== null ? t.latency_ms.toFixed(1) + " ms" : "–", "num"),
+        trendTd,
+        cell(t.loss_pct.toFixed(0) + "%", "num"),
+        cell(ago(t.age_sec), "num")
+      );
+      hosts.append(tr);
+    });
+    document.getElementById("hosts-empty").style.display = data.targets.length ? "none" : "block";
+
+    const ports = document.getElementById("ports");
+    ports.replaceChildren();
+    (data.ports || []).forEach(p => {
+      const tr = document.createElement("tr");
+      tr.append(cell(p.address), cell(String(p.port), "num"), cell(p.is_open ? "Open" : "Closed", p.is_open ? "open" : "closed"));
+      ports.append(tr);
+    });
+    document.getElementById("ports-empty").style.display = (data.ports || []).length ? "none" : "block";
+
+    const alerts = document.getElementById("alerts");
+    alerts.replaceChildren();
+    data.alerts.forEach(a => {
+      const tg = a.telegram_sent ? "Sent (" + a.telegram_delay_ms + " ms)" : "Not sent";
+      const tr = document.createElement("tr");
+      tr.append(cell(a.ts.replace("T", " "), "num"), cell(a.target), cell(a.message), cell(tg));
+      alerts.append(tr);
+    });
+    document.getElementById("alerts-empty").style.display = data.alerts.length ? "none" : "block";
+
+    const ds = data.device_scan;
+    document.getElementById("device-count").textContent = ds.device_count ?? "–";
+    document.getElementById("device-age").textContent = ds.ts
+      ? "Devices on the LAN · scanned " + ago(ds.age_sec)
+      : "Devices on the LAN · not scanned yet";
+    const devList = document.getElementById("device-list");
+    devList.replaceChildren();
+    (ds.devices || []).forEach(d => {
+      const tr = document.createElement("tr");
+      tr.append(cell(d.ip), cell(d.mac), cell(d.hostname || "–"));
+      devList.append(tr);
+    });
+
+    document.getElementById("profile").textContent = "· " + data.active_profile + " profile";
+    document.getElementById("updated").textContent = "Updated " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("error").style.display = "block";
+  }
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
