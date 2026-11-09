@@ -58,7 +58,7 @@
   <h2>Hosts</h2>
   <div class="panel">
     <table>
-      <thead><tr><th>Host</th><th>Status</th><th>Latency</th><th>Trend</th><th>Packet loss</th><th>Last checked</th></tr></thead>
+      <thead><tr><th>Host</th><th>Status</th><th>Latency</th><th>Trend</th><th>Packet loss</th><th>Last checked</th><th>Data</th></tr></thead>
       <tbody id="hosts"></tbody>
     </table>
     <div class="empty" id="hosts-empty" style="display:none">No readings yet. Start the monitor with <code>python monitor.py</code>.</div>
@@ -67,7 +67,7 @@
   <h2>Watched ports</h2>
   <div class="panel">
     <table>
-      <thead><tr><th>Address</th><th>Port</th><th>Status</th></tr></thead>
+      <thead><tr><th>Address</th><th>Port</th><th>Status</th><th>Data</th></tr></thead>
       <tbody id="ports"></tbody>
     </table>
     <div class="empty" id="ports-empty" style="display:none">No ports configured. Add entries to <code>WATCHED_PORTS</code> in config.py.</div>
@@ -76,7 +76,7 @@
   <h2>Alert history</h2>
   <div class="panel">
     <table>
-      <thead><tr><th>Time</th><th>Host</th><th>Event</th><th>Telegram</th></tr></thead>
+      <thead><tr><th>Time</th><th>Host</th><th>Event</th><th>Telegram</th><th>Data</th></tr></thead>
       <tbody id="alerts"></tbody>
     </table>
     <div class="empty" id="alerts-empty" style="display:none">No alerts yet.</div>
@@ -86,7 +86,7 @@
     <summary>Show device list</summary>
     <div class="panel" style="margin-top:8px">
       <table>
-        <thead><tr><th>IP address</th><th>MAC address</th><th>Hostname</th></tr></thead>
+        <thead><tr><th>IP address</th><th>MAC address</th><th>Hostname</th><th>Registration</th><th>Data</th></tr></thead>
         <tbody id="device-list"></tbody>
       </table>
     </div>
@@ -151,7 +151,8 @@ async function refresh() {
         cell(t.latency_ms !== null ? t.latency_ms.toFixed(1) + " ms" : "–", "num"),
         trendTd,
         cell(t.loss_pct.toFixed(0) + "%", "num"),
-        cell(ago(t.age_sec), "num")
+        cell(ago(t.age_sec), "num"),
+        cell(t.source === "simulation" ? "SIMULATED" : "Live")
       );
       hosts.append(tr);
     });
@@ -161,7 +162,7 @@ async function refresh() {
     ports.replaceChildren();
     (data.ports || []).forEach(p => {
       const tr = document.createElement("tr");
-      tr.append(cell(p.address), cell(String(p.port), "num"), cell(p.is_open ? "Open" : "Closed", p.is_open ? "open" : "closed"));
+      tr.append(cell(p.address), cell(String(p.port), "num"), cell(p.is_open ? "Open" : "Closed", p.is_open ? "open" : "closed"), cell(p.source === "simulation" ? "SIMULATED" : "Live"));
       ports.append(tr);
     });
     document.getElementById("ports-empty").style.display = (data.ports || []).length ? "none" : "block";
@@ -171,7 +172,7 @@ async function refresh() {
     data.alerts.forEach(a => {
       const tg = a.telegram_sent ? "Sent (" + a.telegram_delay_ms + " ms)" : "Not sent";
       const tr = document.createElement("tr");
-      tr.append(cell(a.ts.replace("T", " "), "num"), cell(a.target), cell(a.message), cell(tg));
+      tr.append(cell(a.ts.replace("T", " "), "num"), cell(a.target), cell(a.message), cell(tg), cell(a.source === "simulation" ? "SIMULATED" : "Live"));
       alerts.append(tr);
     });
     document.getElementById("alerts-empty").style.display = data.alerts.length ? "none" : "block";
@@ -179,13 +180,13 @@ async function refresh() {
     const ds = data.device_scan;
     document.getElementById("device-count").textContent = ds.device_count ?? "–";
     document.getElementById("device-age").textContent = ds.ts
-      ? "Devices on the LAN · scanned " + ago(ds.age_sec)
+      ? "Devices on the LAN · scanned " + ago(ds.age_sec) + (ds.source === "simulation" ? " · SIMULATED" : " · Live")
       : "Devices on the LAN · not scanned yet";
     const devList = document.getElementById("device-list");
     devList.replaceChildren();
     (ds.devices || []).forEach(d => {
       const tr = document.createElement("tr");
-      tr.append(cell(d.ip), cell(d.mac), cell(d.hostname || "–"));
+      tr.append(cell(d.ip), cell(d.mac), cell(d.hostname || "–"), cell(d.registered ? "Registered" : "Unregistered"), cell(ds.source === "simulation" ? "SIMULATED" : "Live"));
       devList.append(tr);
     });
 
