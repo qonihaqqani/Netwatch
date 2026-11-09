@@ -17,3 +17,7 @@ TARGETS = {
 # the device scan to show very few devices here - that's the network's
 # policy, not a bug. Worth a line in your report's limitations section.
 WATCHED_PORTS = {}
+
+# Add the MAC addresses of devices you trust on this network. Any discovered
+# MAC not listed here is reported as unregistered. Keep this list network-specific.
+KNOWN_DEVICE_MACS = set()

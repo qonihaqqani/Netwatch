@@ -17,3 +17,5 @@ TARGETS = {
 # This is your own private network, so device discovery will show exactly
 # what's connected (likely just your laptop + Pi) - no client isolation here.
 WATCHED_PORTS = {}
+
+KNOWN_DEVICE_MACS = set()

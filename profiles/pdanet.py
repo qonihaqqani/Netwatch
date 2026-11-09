@@ -14,3 +14,5 @@ TARGETS = {
 }
 
 WATCHED_PORTS = {}
+
+KNOWN_DEVICE_MACS = set()
